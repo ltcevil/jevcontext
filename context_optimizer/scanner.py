@@ -94,7 +94,7 @@ class DirectoryScanner:
             ".pytest_cache", ".mypy_cache", ".DS_Store", "*.pyc",
             "*.lock", "package-lock.json", "dist", "build", "*.egg-info",
             ".idea", ".vscode", "*.min.js", "*.min.css", "*.map",
-            ".context_optimizer"
+            ".context_optimizer", ".history", "docs"
         ]
         self.max_file_size_bytes = max_file_size_bytes
         # Inside a git work tree git itself decides what is ignored: it understands
@@ -152,7 +152,7 @@ class DirectoryScanner:
         for part in parts:
             if part.startswith(".") and part not in {".", ".."}:
                 # Hidden files / directories except current dir
-                if part in {".git", ".venv", ".pytest_cache", ".mypy_cache", ".context_optimizer"}:
+                if part in {".git", ".venv", ".pytest_cache", ".mypy_cache", ".context_optimizer", ".history"}:
                     return True
 
         # Check explicit exclude patterns
@@ -166,16 +166,28 @@ class DirectoryScanner:
         if self.git_files is not None:
             return rel_path not in (self.git_dirs if is_dir else self.git_files)
 
-        # Check gitignore patterns (fallback outside git)
+        # Check gitignore patterns (fallback outside git) with negation support
+        ignored = False
         for pat in self.gitignore_patterns:
-            clean_pat = pat.rstrip("/")
+            negated = pat.startswith("!")
+            actual_pat = pat[1:] if negated else pat
+            clean_pat = actual_pat.rstrip("/")
+            if clean_pat.startswith("./"):
+                clean_pat = clean_pat[2:]
+            
+            matched = False
             if fnmatch.fnmatch(rel_path, clean_pat) or fnmatch.fnmatch(os.path.basename(rel_path), clean_pat):
-                return True
-            for part in parts:
-                if fnmatch.fnmatch(part, clean_pat):
-                    return True
+                matched = True
+            else:
+                for part in parts:
+                    if fnmatch.fnmatch(part, clean_pat):
+                        matched = True
+                        break
+            
+            if matched:
+                ignored = not negated
 
-        return False
+        return ignored
 
     def is_binary_file(self, file_path: Path) -> bool:
         """Heuristic check to determine if a file is binary."""
