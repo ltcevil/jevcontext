@@ -406,9 +406,57 @@ def cmd_agent(args: argparse.Namespace):
         sys.exit(1)
 
 
+CLI_MAIN_EPILOG = """\
+examples (copy, paste, adjust):
+
+  1. OPTIMIZE — distill high-density context for questions or coding tasks:
+    context-optimizer optimize "how does callback router dispatch work?"
+    context-optimizer optimize "why does the ingest fail?" --root /opt/jarina --budget 12000
+    context-optimizer optimize "audit secrets handling" --format json -o context.json
+    context-optimizer optimize "fix Pinecone batch timeout" --force-include userbot/plugins/pine.py
+    context-optimizer optimize "summarize architecture" --vertex --project jarinagem --model gemini-3.8-flash
+    context-optimizer optimize "refactor scanner" --exclude-patterns "*,!tests,!scripts,!userbot" --min-score 0.7
+
+  2. TRIGGER — trigger context optimization programmatically via JEV event or JSON:
+    context-optimizer trigger "find memory leak in worker"
+    context-optimizer trigger --payload '{"query": "diagnose 500 error", "token_budget": 6000}'
+    echo '{"query": "trace call path", "force_include": ["main.py"]}' | context-optimizer trigger --stdin
+
+  3. AGENT — interactive Antigravity agent answering over distilled context:
+    context-optimizer agent "explain the authentication flow and propose unit tests"
+    context-optimizer agent "refactor the database query layer" --root /opt/jarina --stream
+    context-optimizer agent "review changes in tests" --exclude-patterns "*,!tests" --thoughts
+
+  4. SCAN — inspect repository files, AST symbols, token estimates & exclusions:
+    context-optimizer scan
+    context-optimizer scan --root /opt/jarina --symbols
+    context-optimizer scan --root /opt/jarina --exclude-patterns "*,!tests,!scripts,!userbot"
+    context-optimizer scan --ext .py --top-k 20 --json
+
+  5. MCP & MCP-SERVER — inspect schema or run stdio server for Claude & Agent IDEs:
+    context-optimizer mcp                                           # Output JSON schema for MCP tools
+    context-optimizer mcp-server                                    # Run stdio MCP server for agent IDEs
+    context-optimizer mcp-server --env-file ~/.optimizer.env         # Run with explicit environment file
+
+  6. LISTEN — run inbox listener daemon for background agent triggers:
+    context-optimizer listen                                        # Listen on .context_optimizer/inbox.jsonl
+    context-optimizer listen --dir /opt/jarina --interval 2
+
+  7. CONFIG — inspect or update isolated environment configuration:
+    context-optimizer config show
+    context-optimizer config path
+    context-optimizer config set GEMINI_MODEL=gemini-3.8-flash
+    context-optimizer config set USE_VERTEX=true
+    context-optimizer config set GCP_PROJECT=jarinagem
+"""
+
+
 def main():
+    fmt = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(
         prog="context-optimizer",
+        formatter_class=fmt,
+        epilog=CLI_MAIN_EPILOG,
         description="Intelligent Context Optimizer for AI Agents using Google Antigravity SDK & TypeSafe Jev",
     )
     parser.add_argument(
@@ -452,7 +500,9 @@ def main():
 
     # 1. Optimize subcommand
     opt_parser = subparsers.add_parser(
-        "optimize", help="Optimize context for a given query"
+        "optimize",
+        formatter_class=fmt,
+        help="Optimize context for a given query",
     )
     opt_parser.add_argument(
         "query", nargs="+", help="Query or task instruction to optimize context for"
@@ -483,7 +533,9 @@ def main():
 
     # 2. Trigger subcommand (for other agents)
     trig_parser = subparsers.add_parser(
-        "trigger", help="Trigger optimization programmatically via JEV event"
+        "trigger",
+        formatter_class=fmt,
+        help="Trigger optimization programmatically via JEV event",
     )
     trig_parser.add_argument("--payload", type=str, help="JSON / JEV event string")
     trig_parser.add_argument(
@@ -495,7 +547,9 @@ def main():
 
     # 3. Listen daemon
     listen_parser = subparsers.add_parser(
-        "listen", help="Run inbox listener daemon for agent triggers"
+        "listen",
+        formatter_class=fmt,
+        help="Run inbox listener daemon for agent triggers",
     )
     listen_parser.add_argument(
         "--dir", type=str, help="Base directory containing .context_optimizer folder"
@@ -506,7 +560,9 @@ def main():
 
     # 4. Config manager
     cfg_parser = subparsers.add_parser(
-        "config", help="Manage isolated environment variables"
+        "config",
+        formatter_class=fmt,
+        help="Manage isolated environment variables",
     )
     cfg_parser.add_argument(
         "config_action", choices=["show", "set", "path"], nargs="?", default="show"
@@ -514,14 +570,23 @@ def main():
     cfg_parser.add_argument("key_value", nargs="?", help="KEY=VALUE to set")
 
     # 5. MCP tool schema
-    subparsers.add_parser("mcp", help="Output MCP tool definition schema")
+    subparsers.add_parser(
+        "mcp",
+        formatter_class=fmt,
+        help="Output MCP tool definition schema",
+    )
 
     # 6. MCP stdio server
-    subparsers.add_parser("mcp-server", help="Run MCP server over stdio transport")
+    subparsers.add_parser(
+        "mcp-server",
+        formatter_class=fmt,
+        help="Run MCP server over stdio transport",
+    )
 
     # 7. Scan codebase files & AST symbols
     scan_parser = subparsers.add_parser(
         "scan",
+        formatter_class=fmt,
         help="Scan and audit repository files, symbols, token counts, and exclusions",
     )
     scan_parser.add_argument("--root", type=str, help="Root directory (default: cwd)")
@@ -532,7 +597,12 @@ def main():
         "--ext", type=str, help="Filter by file extension (e.g. .py, .ts)"
     )
     scan_parser.add_argument(
-        "--limit", type=int, default=50, help="Max files to display in table"
+        "--limit",
+        "--top-k",
+        dest="limit",
+        type=int,
+        default=50,
+        help="Max files to display in table",
     )
     scan_parser.add_argument(
         "--exclude-patterns", type=str, help="Comma-separated exclude glob patterns"
@@ -543,7 +613,9 @@ def main():
 
     # 8. Antigravity AI Agent integration
     agent_parser = subparsers.add_parser(
-        "agent", help="Run Antigravity AI Agent with distilled codebase context"
+        "agent",
+        formatter_class=fmt,
+        help="Run Antigravity AI Agent with distilled codebase context",
     )
     agent_parser.add_argument(
         "prompt", nargs="+", help="Task instruction or prompt for the AI agent"
