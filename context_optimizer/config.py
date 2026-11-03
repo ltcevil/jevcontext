@@ -27,6 +27,10 @@ def resolve_adc_project() -> Optional[str]:
     candidate_paths.append(
         Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
     )
+    candidate_paths.append(Path.home() / ".credentials" / "jarinagcp.json")
+    candidate_paths.append(Path.home() / ".credentials" / "jarina-postpaid.json")
+    candidate_paths.append(Path("/run/secrets/gcp-sa.json"))
+    candidate_paths.append(Path("/run/sa-keys/jarinagcp.json"))
 
     for path in candidate_paths:
         if path.is_file():
