@@ -126,8 +126,8 @@ class IsolatedConfig(BaseModel):
         default="jev-latest", description="TypeSafe model identifier"
     )
     gemini_model: Optional[str] = Field(
-        default="gemini-3.8-flash",
-        description="Google Gemini model identifier (default to gemini-3.8-flash)",
+        default="gemini-2.5-flash",
+        description="Google Gemini model identifier (default to gemini-2.5-flash)",
     )
     max_context_tokens: int = Field(
         default=8000,
@@ -312,9 +312,9 @@ class IsolatedConfig(BaseModel):
             if model_name_clean.lower() not in ("null", "none", ""):
                 config_dict["gemini_model"] = model_name_clean
             else:
-                config_dict["gemini_model"] = "gemini-3.8-flash"
+                config_dict["gemini_model"] = "gemini-2.5-flash"
         elif "gemini_model" not in config_dict:
-            config_dict["gemini_model"] = "gemini-3.8-flash"
+            config_dict["gemini_model"] = "gemini-2.5-flash"
 
         if "MAX_CONTEXT_TOKENS" in env_vars:
             try:

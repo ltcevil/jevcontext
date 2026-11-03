@@ -142,7 +142,7 @@ class AntigravityAgentManager:
     async def open_conversation(self) -> AsyncIterator[Conversation]:
         """Context manager to create, manage, and cleanly exit a Conversation session."""
         tool_runner = ToolRunner()
-        model_name = self.config.gemini_model or "gemini-3.8-flash"
+        model_name = self.config.gemini_model or "gemini-2.5-flash"
 
         if self.config.use_vertex:
             endpoint = VertexEndpoint(
@@ -152,15 +152,25 @@ class AntigravityAgentManager:
         else:
             endpoint = GeminiAPIEndpoint(api_key=self.config.gemini_api_key or "")
 
-        model_target = ModelTarget(
-            name=model_name,
-            types=[ModelType.TEXT],
-            endpoint=endpoint,
-        )
+        targets = [
+            ModelTarget(
+                name=model_name,
+                types=[ModelType.TEXT],
+                endpoint=endpoint,
+            )
+        ]
+        if model_name != "gemini-2.5-flash":
+            targets.append(
+                ModelTarget(
+                    name="gemini-2.5-flash",
+                    types=[ModelType.TEXT],
+                    endpoint=endpoint,
+                )
+            )
 
         strategy = LocalConnectionStrategy(
             tool_runner=tool_runner,
-            models=[model_target],
+            models=targets,
             system_instructions=self.build_system_instructions(),
             workspaces=[str(self.workspace_dir)],
             policies=self.build_policies(),

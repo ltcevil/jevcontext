@@ -131,8 +131,7 @@ def cmd_optimize(args: argparse.Namespace):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(output_text, encoding="utf-8")
         console.print(f"[green]Saved output to:[/] {out_path}")
-    else:
-        # Print raw content to stdout
+    elif args.format in ("json", "jev") or getattr(args, "context_only", False):
         try:
             sys.stdout.write(output_text)
             if not output_text.endswith("\n"):
@@ -140,6 +139,23 @@ def cmd_optimize(args: argparse.Namespace):
             sys.stdout.flush()
         except BrokenPipeError:
             pass
+    else:
+        # Default interactive behavior: stream the Gemini answer over the distilled context
+        console.print(f"\n[bold green]Answer ({config.gemini_model}):[/]\n")
+        context_prompt = f"{res.context_markdown}\n\n---\nUSER TASK:\n{query}"
+        agent_mgr = AntigravityAgentManager(config=config, workspace_dir=root_dir)
+
+        def on_token(token: str):
+            sys.stdout.write(token)
+            sys.stdout.flush()
+
+        import asyncio
+
+        try:
+            asyncio.run(agent_mgr.chat_stream(context_prompt, on_token=on_token))
+            sys.stdout.write("\n")
+        except Exception as e:
+            console.print(f"\n[bold red]Gemini error:[/] {e}")
 
 
 def cmd_trigger(args: argparse.Namespace):
@@ -528,6 +544,26 @@ def main():
         "--min-score", type=float, help="Minimum relevance threshold (0.0 to 1.0)"
     )
     opt_parser.add_argument(
+        "--context-only",
+        action="store_true",
+        help="Only output distilled context files without calling Gemini",
+    )
+    opt_parser.add_argument(
+        "--project",
+        type=str,
+        help="Google Cloud project ID for Vertex AI",
+    )
+    opt_parser.add_argument(
+        "--location",
+        type=str,
+        help="Google Cloud region/location for Vertex AI",
+    )
+    opt_parser.add_argument(
+        "--vertex",
+        action="store_true",
+        help="Enable Google Cloud Vertex AI via ADC",
+    )
+    opt_parser.add_argument(
         "-o", "--output", type=str, help="Write output to file instead of stdout"
     )
 
@@ -626,6 +662,18 @@ def main():
     )
     agent_parser.add_argument(
         "--model", type=str, help="Override Gemini model identifier"
+    )
+    agent_parser.add_argument(
+        "--project", type=str, help="Google Cloud project ID for Vertex AI"
+    )
+    agent_parser.add_argument(
+        "--location", type=str, help="Google Cloud region/location for Vertex AI"
+    )
+    agent_parser.add_argument(
+        "--vertex", action="store_true", help="Enable Google Cloud Vertex AI via ADC"
+    )
+    agent_parser.add_argument(
+        "--exclude-patterns", type=str, help="Comma-separated exclude glob patterns"
     )
     agent_parser.add_argument(
         "--thoughts", action="store_true", help="Display internal reasoning stream"

@@ -222,23 +222,23 @@ def test_adc_vertex_configuration():
 
 
 def test_jarinagem_vertex_and_gemini_38_flash_config():
-    """Verify jarinagem GCP project, service account credentials, Vertex AI, and gemini-3.8-flash."""
+    """Verify jarinagcp GCP project, service account credentials, Vertex AI, and gemini-2.5-flash."""
     config = IsolatedConfig.load(
         env_file_path=Path(__file__).parent.parent / ".optimizer.env"
     )
-    assert config.gcp_project == "jarinagem"
+    assert config.gcp_project == "jarinagcp"
     assert config.use_vertex is True
     assert config.gemini_api_key is None
-    assert config.gemini_model == "gemini-3.8-flash"
+    assert config.gemini_model == "gemini-2.5-flash"
     assert config.google_application_credentials is not None
     assert Path(config.google_application_credentials).is_file()
 
-    # Verify AntigravityAgentManager passes gemini-3.8-flash and Vertex AI
+    # Verify AntigravityAgentManager passes gemini-2.5-flash and Vertex AI
     mgr = AntigravityAgentManager(config)
     agent_cfg = mgr.build_agent_config()
-    assert agent_cfg.model == "gemini-3.8-flash"
+    assert agent_cfg.model == "gemini-2.5-flash"
     assert agent_cfg.vertex is True
-    assert agent_cfg.project == "jarinagem"
+    assert agent_cfg.project == "jarinagcp"
 
 
 def test_jarina_exclude_patterns_filters_only_tests_scripts_userbot():
