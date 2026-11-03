@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 # Route all logs strictly to stderr so stdout remains 100% pure JSON-RPC
 logging.basicConfig(
@@ -61,7 +61,7 @@ def optimize_context(
 _CONFIG: Optional[IsolatedConfig] = None
 
 
-def main():
+def main(env_file: Optional[str] = None):
     """Run the MCP server over stdio transport.
 
     --env-file PATH pins the isolated config file (recommended for proxies/launchd).
@@ -69,13 +69,17 @@ def main():
     import argparse
 
     global _CONFIG
-    parser = argparse.ArgumentParser(prog="context_optimizer.mcp_server")
-    parser.add_argument(
-        "--env-file", help="isolated env file to load (default: cwd lookup)"
-    )
-    args, _unknown = parser.parse_known_args()
-    if args.env_file:
-        path = os.path.expanduser(args.env_file)
+    target_env = env_file
+    if not target_env:
+        parser = argparse.ArgumentParser(prog="context_optimizer.mcp_server")
+        parser.add_argument(
+            "--env-file", help="isolated env file to load (default: cwd lookup)"
+        )
+        args, _unknown = parser.parse_known_args()
+        target_env = args.env_file
+
+    if target_env:
+        path = os.path.expanduser(target_env)
         if not os.path.isfile(path):
             print(f"context-optimizer: env file not found: {path}", file=sys.stderr)
             sys.exit(2)

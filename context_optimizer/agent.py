@@ -6,7 +6,6 @@ policies, and triggers using the google-antigravity Python SDK.
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
@@ -27,7 +26,6 @@ from google.antigravity.connections.local import LocalConnectionStrategy
 from google.antigravity.conversation.conversation import Conversation
 from google.antigravity.hooks import hooks, policy
 from google.antigravity.tools.tool_runner import ToolRunner
-from google.antigravity.triggers import TriggerContext, every, on_file_change
 
 from .config import IsolatedConfig
 
@@ -37,7 +35,9 @@ logger = logging.getLogger("context_optimizer.agent")
 class AntigravityAgentManager:
     """Manages the Antigravity Agent lifecycle, Conversation, Hooks, Policies, and Triggers."""
 
-    def __init__(self, config: IsolatedConfig, workspace_dir: Optional[str | Path] = None):
+    def __init__(
+        self, config: IsolatedConfig, workspace_dir: Optional[str | Path] = None
+    ):
         self.config = config
         self.workspace_dir = Path(workspace_dir or Path.cwd()).resolve()
         self.session_events: List[str] = []
@@ -58,10 +58,10 @@ class AntigravityAgentManager:
         """Construct declarative safety policies following SDK best practices."""
         # 1. Strictly restrict file operations to the current workspace
         workspace_policy = policy.workspace_only([str(self.workspace_dir)])
-        
+
         # 2. Deny arbitrary shell commands for safety
         deny_shell = policy.deny("run_command")
-        
+
         # 3. Allow read-only file inspections
         allow_view = policy.allow("view_file")
 
@@ -107,7 +107,7 @@ class AntigravityAgentManager:
     def build_agent_config(
         self,
         custom_triggers: Optional[List[Any]] = None,
-        behavior: AgentBehavior = AgentBehavior.AUTONOMOUS
+        behavior: AgentBehavior = AgentBehavior.AUTONOMOUS,
     ) -> LocalAgentConfig:
         """Build strongly-typed LocalAgentConfig with isolated environment credentials."""
         kwargs: Dict[str, Any] = {
@@ -117,7 +117,7 @@ class AntigravityAgentManager:
             "workspaces": [str(self.workspace_dir)],
             "capabilities": CapabilitiesConfig(
                 agent_behavior=behavior,
-            )
+            ),
         }
 
         # Isolate credentials: pass explicitly if provided, avoiding global env reads
@@ -130,7 +130,7 @@ class AntigravityAgentManager:
         elif self.config.gemini_api_key:
             kwargs["api_key"] = self.config.gemini_api_key
 
-        model_name = self.config.gemini_model or "gemini-2.5-flash"
+        model_name = self.config.gemini_model or "gemini-3.8-flash"
         kwargs["model"] = model_name
 
         if custom_triggers:
@@ -142,7 +142,7 @@ class AntigravityAgentManager:
     async def open_conversation(self) -> AsyncIterator[Conversation]:
         """Context manager to create, manage, and cleanly exit a Conversation session."""
         tool_runner = ToolRunner()
-        model_name = self.config.gemini_model or "gemini-2.5-flash"
+        model_name = self.config.gemini_model or "gemini-3.8-flash"
 
         if self.config.use_vertex:
             endpoint = VertexEndpoint(
@@ -150,9 +150,7 @@ class AntigravityAgentManager:
                 location=self.config.gcp_location or "us-central1",
             )
         else:
-            endpoint = GeminiAPIEndpoint(
-                api_key=self.config.gemini_api_key or ""
-            )
+            endpoint = GeminiAPIEndpoint(api_key=self.config.gemini_api_key or "")
 
         model_target = ModelTarget(
             name=model_name,
@@ -190,7 +188,7 @@ class AntigravityAgentManager:
         self,
         prompt: str,
         on_token: Optional[Callable[[str], None]] = None,
-        on_thought: Optional[Callable[[str], None]] = None
+        on_thought: Optional[Callable[[str], None]] = None,
     ) -> str:
         """Chat with streaming response tokens and internal model reasoning (thoughts)."""
         config = self.build_agent_config()
@@ -226,5 +224,5 @@ class AntigravityAgentManager:
             "response": text,
             "turns": self._conversation.turn_count,
             "steps": len(self._conversation.history),
-            "last_response": str(self._conversation.last_response)
+            "last_response": str(self._conversation.last_response),
         }

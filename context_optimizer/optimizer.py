@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +22,7 @@ logger = logging.getLogger("context_optimizer.optimizer")
 @dataclass
 class OptimizedFileBundle:
     """Formatted file entry included in the optimized context."""
+
     relpath: str
     decision: FileJevDecision
     inclusion_type: str  # "full", "outline", "excerpt", "manifest"
@@ -32,6 +33,7 @@ class OptimizedFileBundle:
 @dataclass
 class OptimizationResult:
     """Complete result of a context optimization pass."""
+
     query: str
     root_dir: str
     guardrail_passed: bool
@@ -54,14 +56,14 @@ class OptimizationResult:
             "guardrail": {
                 "passed": self.guardrail_passed,
                 "confidence": self.guardrail_confidence,
-                "message": self.guardrail_message
+                "message": self.guardrail_message,
             },
             "stats": {
                 "total_scanned": self.total_files_scanned,
                 "total_included": self.total_files_included,
                 "estimated_tokens": self.estimated_tokens,
                 "max_budget": self.max_tokens_budget,
-                "duration_seconds": self.execution_time_seconds
+                "duration_seconds": self.execution_time_seconds,
             },
             "selected_files": [
                 {
@@ -70,15 +72,17 @@ class OptimizationResult:
                     "score": b.decision.score_label,
                     "probability": b.decision.relevance_probability,
                     "strategy": b.inclusion_type,
-                    "tokens": b.token_cost
+                    "tokens": b.token_cost,
                 }
                 for b in self.selected_files
             ],
             "manifest_files": self.manifest_files,
-            "context_markdown": self.context_markdown
+            "context_markdown": self.context_markdown,
         }
 
-    def to_jev_event(self, event_id: Optional[str] = None, in_reply_to: Optional[str] = None) -> Dict[str, Any]:
+    def to_jev_event(
+        self, event_id: Optional[str] = None, in_reply_to: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Export as a typed JSON Event (JEV) matching the typesafe.ai event standard."""
         evt_id = event_id or f"jev-ctx-{int(time.time() * 1000)}"
         return {
@@ -89,24 +93,30 @@ class OptimizationResult:
             "source": "context-optimizer-cli",
             "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "datacontenttype": "application/json",
-            "data": self.to_dict()
+            "data": self.to_dict(),
         }
 
 
 class ContextOptimizer:
     """Core Context Optimizer orchestrator."""
 
-    def __init__(self, config: Optional[IsolatedConfig] = None, root_dir: Optional[str | Path] = None):
+    def __init__(
+        self,
+        config: Optional[IsolatedConfig] = None,
+        root_dir: Optional[str | Path] = None,
+    ):
         self.config = config or IsolatedConfig.load()
         self.root_dir = Path(root_dir or Path.cwd()).resolve()
-        self.scanner = DirectoryScanner(root_dir=self.root_dir, exclude_patterns=self.config.exclude_patterns)
+        self.scanner = DirectoryScanner(
+            root_dir=self.root_dir, exclude_patterns=self.config.exclude_patterns
+        )
         self.jev_engine = JevContextEngine(self.config)
 
     def optimize(
         self,
         query: str,
         token_budget: Optional[int] = None,
-        force_include: Optional[List[str]] = None
+        force_include: Optional[List[str]] = None,
     ) -> OptimizationResult:
         """Execute the end-to-end context optimization pipeline."""
         start_time = time.time()
@@ -127,30 +137,63 @@ class ContextOptimizer:
                 estimated_tokens=0,
                 max_tokens_budget=budget,
                 execution_time_seconds=duration,
-                context_markdown=f"> [!WARNING] Guardrail rejection: {msg}"
+                context_markdown=f"> [!WARNING] Guardrail rejection: {msg}",
             )
 
         # Step 2: Recursive File Scanning
         scanned_files = self.scanner.scan(load_content=True)
 
         # Step 3: Semantic Decision Pass with Jev (Noul, Score, Choice)
+        # For efficiency across large repositories, pre-score all files via calibrated
+        # embedded Jev and refine top candidates using live TypeSafe Jev if enabled.
         decisions: List[Tuple[ScannedFile, FileJevDecision]] = []
         force_set = set(force_include or [])
 
+        initial_evals: List[Tuple[ScannedFile, FileJevDecision]] = []
         for f in scanned_files:
-            dec = self.jev_engine.evaluate_file(f, query)
+            dec = self.jev_engine._embedded_evaluate_file(f, query)
             # Force include override if user requested specific files
             if f.relpath in force_set:
                 dec.is_relevant = True
                 dec.score_label = "critical"
                 dec.score_level_index = 3
                 dec.inclusion_strategy = "full_content"
+            initial_evals.append((f, dec))
+
+        # Sort candidate files by relevance probability descending, then by score index
+        initial_evals.sort(
+            key=lambda item: (
+                item[1].score_level_index,
+                item[1].relevance_probability,
+                -item[0].line_count,
+            ),
+            reverse=True,
+        )
+
+        # Refine top relevant candidates (up to 20) with live Jev client if configured
+        for idx, (f, dec) in enumerate(initial_evals):
+            if (
+                idx < 20
+                and self.jev_engine.client
+                and dec.relevance_probability >= 0.25
+                and f.relpath not in force_set
+            ):
+                try:
+                    refined = self.jev_engine.evaluate_file(f, query)
+                    decisions.append((f, refined))
+                    continue
+                except Exception:
+                    pass
             decisions.append((f, dec))
 
         # Sort candidate files by relevance probability descending, then by score index
         decisions.sort(
-            key=lambda item: (item[1].score_level_index, item[1].relevance_probability, -item[0].line_count),
-            reverse=True
+            key=lambda item: (
+                item[1].score_level_index,
+                item[1].relevance_probability,
+                -item[0].line_count,
+            ),
+            reverse=True,
         )
 
         # Step 4: Token Budget Allocation & Content Compaction
@@ -167,8 +210,13 @@ class ContextOptimizer:
 
             strategy = dec.inclusion_strategy
             if dec.score_level_index >= 3 and strategy in {"manifest_entry", "exclude"}:
-                strategy = "full_content" if f.line_count <= 400 else "outline_and_excerpts"
-            elif dec.score_level_index >= 2 and strategy in {"manifest_entry", "exclude"}:
+                strategy = (
+                    "full_content" if f.line_count <= 400 else "outline_and_excerpts"
+                )
+            elif dec.score_level_index >= 2 and strategy in {
+                "manifest_entry",
+                "exclude",
+            }:
                 strategy = "outline_and_excerpts"
 
             # Full content inclusion for critical or compact relevant files
@@ -176,13 +224,15 @@ class ContextOptimizer:
                 cost = f.estimated_tokens
                 if current_tokens + cost <= content_budget:
                     rendered = f"### File: `{f.relpath}` ({dec.role}, {f.line_count} lines)\n```{f.language}\n{f.content.strip()}\n```\n"
-                    selected_bundles.append(OptimizedFileBundle(
-                        relpath=f.relpath,
-                        decision=dec,
-                        inclusion_type="full",
-                        token_cost=cost,
-                        rendered_text=rendered
-                    ))
+                    selected_bundles.append(
+                        OptimizedFileBundle(
+                            relpath=f.relpath,
+                            decision=dec,
+                            inclusion_type="full",
+                            token_cost=cost,
+                            rendered_text=rendered,
+                        )
+                    )
                     current_tokens += cost
                     continue
                 else:
@@ -200,13 +250,15 @@ class ContextOptimizer:
                 )
                 cost = max(30, len(rendered) // 4)
                 if current_tokens + cost <= content_budget:
-                    selected_bundles.append(OptimizedFileBundle(
-                        relpath=f.relpath,
-                        decision=dec,
-                        inclusion_type="outline",
-                        token_cost=cost,
-                        rendered_text=rendered
-                    ))
+                    selected_bundles.append(
+                        OptimizedFileBundle(
+                            relpath=f.relpath,
+                            decision=dec,
+                            inclusion_type="outline",
+                            token_cost=cost,
+                            rendered_text=rendered,
+                        )
+                    )
                     current_tokens += cost
                     continue
 
@@ -236,7 +288,9 @@ class ContextOptimizer:
         # Directory Manifest
         if manifest_files:
             md_parts.append("## Repository Manifest (Other Scanned Files)\n")
-            md_parts.append("<details><summary>Click to view remaining files</summary>\n\n")
+            md_parts.append(
+                "<details><summary>Click to view remaining files</summary>\n\n"
+            )
             for mf in sorted(manifest_files)[:100]:
                 md_parts.append(f"- `{mf}`\n")
             if len(manifest_files) > 100:
@@ -260,5 +314,5 @@ class ContextOptimizer:
             execution_time_seconds=duration,
             selected_files=selected_bundles,
             manifest_files=manifest_files,
-            context_markdown=context_markdown
+            context_markdown=context_markdown,
         )

@@ -12,7 +12,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -24,7 +23,7 @@ from .optimizer import ContextOptimizer
 from .triggers import TriggerInboxWatcher, execute_trigger_request
 
 console = Console(stderr=True)  # Logs and status go to stderr
-stdout_console = Console()      # Payload output goes to stdout
+stdout_console = Console()  # Payload output goes to stdout
 
 
 def setup_logging(verbose: bool = False):
@@ -32,7 +31,7 @@ def setup_logging(verbose: bool = False):
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S"
+        datefmt="%H:%M:%S",
     )
     if not verbose:
         for noisy in ["httpx", "httpcore", "httpx2", "typesafe_sdk", "urllib3"]:
@@ -58,23 +57,29 @@ def cmd_optimize(args: argparse.Namespace):
     config = IsolatedConfig.load(
         env_file_path=args.env_file,
         allow_global_env=args.allow_global_env,
-        overrides=overrides or None
+        overrides=overrides or None,
     )
 
-    auth_mode = f"Vertex AI (ADC, project: {config.gcp_project or 'auto'})" if config.use_vertex else "Gemini API Key"
+    auth_mode = (
+        f"Vertex AI (ADC, project: {config.gcp_project or 'auto'})"
+        if config.use_vertex
+        else "Gemini API Key"
+    )
     console.print(f"[bold cyan]🔍 Scanning directory:[/] {root_dir}")
     console.print(f"[bold cyan]🎯 Optimization query:[/] {query}")
-    console.print(f"[dim]Auth: {auth_mode} | Env isolation: {'enabled' if config.isolate_env else 'disabled'} | Budget: {args.budget or config.max_context_tokens} tokens[/dim]")
+    console.print(
+        f"[dim]Auth: {auth_mode} | Env isolation: {'enabled' if config.isolate_env else 'disabled'} | Budget: {args.budget or config.max_context_tokens} tokens[/dim]"
+    )
 
     optimizer = ContextOptimizer(config=config, root_dir=root_dir)
     res = optimizer.optimize(
-        query=query,
-        token_budget=args.budget,
-        force_include=args.force_include
+        query=query, token_budget=args.budget, force_include=args.force_include
     )
 
     if not res.guardrail_passed:
-        console.print(f"[bold red]❌ Guardrail check rejected query:[/] {res.guardrail_message}")
+        console.print(
+            f"[bold red]❌ Guardrail check rejected query:[/] {res.guardrail_message}"
+        )
         sys.exit(2)
 
     # Display Rich summary table to stderr
@@ -93,7 +98,7 @@ def cmd_optimize(args: argparse.Namespace):
             bundle.decision.score_label,
             f"{bundle.decision.relevance_probability:.2f}",
             bundle.inclusion_type,
-            str(bundle.token_cost)
+            str(bundle.token_cost),
         )
 
     console.print(table)
@@ -134,7 +139,9 @@ def cmd_trigger(args: argparse.Namespace):
     elif args.query:
         raw_payload = json.dumps({"query": " ".join(args.query)})
     else:
-        console.print("[bold red]Error:[/] Must provide --payload, --query, or send via stdin.")
+        console.print(
+            "[bold red]Error:[/] Must provide --payload, --query, or send via stdin."
+        )
         sys.exit(1)
 
     overrides = {}
@@ -148,7 +155,7 @@ def cmd_trigger(args: argparse.Namespace):
     config = IsolatedConfig.load(
         env_file_path=args.env_file,
         allow_global_env=args.allow_global_env,
-        overrides=overrides or None
+        overrides=overrides or None,
     )
 
     try:
@@ -165,26 +172,30 @@ def cmd_listen(args: argparse.Namespace):
     """Run inbox watcher daemon for inter-agent triggers."""
     base_dir = Path(args.dir or os.getcwd()).resolve()
     config = IsolatedConfig.load(
-        env_file_path=args.env_file,
-        allow_global_env=args.allow_global_env
+        env_file_path=args.env_file, allow_global_env=args.allow_global_env
     )
 
     watcher = TriggerInboxWatcher(
         base_dir=base_dir,
         config=config,
-        on_result=lambda res: console.print(f"[green]✔ Processed trigger:[/] {res.get('id')} ({res.get('type')})")
+        on_result=lambda res: console.print(
+            f"[green]✔ Processed trigger:[/] {res.get('id')} ({res.get('type')})"
+        ),
     )
 
-    console.print(Panel(
-        f"[bold green]Context Optimizer Agent Listener active[/]\n"
-        f"Watching inbox: [cyan]{watcher.inbox_dir}[/]\n"
-        f"Writing outbox: [cyan]{watcher.outbox_dir}[/]\n"
-        f"Interval: {args.interval}s | Press Ctrl+C to stop",
-        title="Agent Trigger Listener"
-    ))
+    console.print(
+        Panel(
+            f"[bold green]Context Optimizer Agent Listener active[/]\n"
+            f"Watching inbox: [cyan]{watcher.inbox_dir}[/]\n"
+            f"Writing outbox: [cyan]{watcher.outbox_dir}[/]\n"
+            f"Interval: {args.interval}s | Press Ctrl+C to stop",
+            title="Agent Trigger Listener",
+        )
+    )
 
     try:
         import time
+
         while True:
             watcher.process_pending_files()
             time.sleep(args.interval)
@@ -200,11 +211,15 @@ def cmd_config(args: argparse.Namespace):
 
     if args.config_action == "set":
         if not args.key_value or "=" not in args.key_value:
-            console.print("[bold red]Error:[/] Format must be KEY=VALUE (e.g. GEMINI_API_KEY=xyz)")
+            console.print(
+                "[bold red]Error:[/] Format must be KEY=VALUE (e.g. GEMINI_API_KEY=xyz)"
+            )
             sys.exit(1)
         k, v = args.key_value.split("=", 1)
         target = Path(args.env_file).resolve() if args.env_file else DEFAULT_ENV_FILE
-        saved_path = IsolatedConfig.save_variable(k.strip(), v.strip(), target_path=target)
+        saved_path = IsolatedConfig.save_variable(
+            k.strip(), v.strip(), target_path=target
+        )
         console.print(f"[green]Saved {k.strip()} to isolated store:[/] {saved_path}")
         return
 
@@ -232,40 +247,89 @@ def cmd_mcp(args: argparse.Namespace):
 def main():
     parser = argparse.ArgumentParser(
         prog="context-optimizer",
-        description="Intelligent Context Optimizer for AI Agents using Google Antigravity SDK & TypeSafe Jev"
+        description="Intelligent Context Optimizer for AI Agents using Google Antigravity SDK & TypeSafe Jev",
     )
-    parser.add_argument("--env-file", type=str, help="Path to isolated environment file")
-    parser.add_argument("--allow-global-env", action="store_true", help="Opt-in to reading ambient global os.environ")
-    parser.add_argument("--vertex", action="store_true", help="Enable Google Cloud Vertex AI via Application Default Credentials (ADC)")
-    parser.add_argument("--project", type=str, help="Google Cloud project ID for Vertex AI (auto-detected from ADC if omitted)")
-    parser.add_argument("--location", type=str, help="Google Cloud region/location for Vertex AI (default: us-central1)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logging")
+    parser.add_argument(
+        "--env-file", type=str, help="Path to isolated environment file"
+    )
+    parser.add_argument(
+        "--allow-global-env",
+        action="store_true",
+        help="Opt-in to reading ambient global os.environ",
+    )
+    parser.add_argument(
+        "--vertex",
+        action="store_true",
+        help="Enable Google Cloud Vertex AI via Application Default Credentials (ADC)",
+    )
+    parser.add_argument(
+        "--project",
+        type=str,
+        help="Google Cloud project ID for Vertex AI (auto-detected from ADC if omitted)",
+    )
+    parser.add_argument(
+        "--location",
+        type=str,
+        help="Google Cloud region/location for Vertex AI (default: us-central1)",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose debug logging"
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
     # 1. Optimize subcommand
-    opt_parser = subparsers.add_parser("optimize", help="Optimize context for a given query")
-    opt_parser.add_argument("query", nargs="+", help="Query or task instruction to optimize context for")
+    opt_parser = subparsers.add_parser(
+        "optimize", help="Optimize context for a given query"
+    )
+    opt_parser.add_argument(
+        "query", nargs="+", help="Query or task instruction to optimize context for"
+    )
     opt_parser.add_argument("--root", type=str, help="Root directory (default: cwd)")
     opt_parser.add_argument("--budget", type=int, help="Max token budget")
-    opt_parser.add_argument("--force-include", nargs="*", help="File relative paths to force include")
-    opt_parser.add_argument("--format", choices=["markdown", "json", "jev"], default="markdown", help="Output format")
-    opt_parser.add_argument("-o", "--output", type=str, help="Write output to file instead of stdout")
+    opt_parser.add_argument(
+        "--force-include", nargs="*", help="File relative paths to force include"
+    )
+    opt_parser.add_argument(
+        "--format",
+        choices=["markdown", "json", "jev"],
+        default="markdown",
+        help="Output format",
+    )
+    opt_parser.add_argument(
+        "-o", "--output", type=str, help="Write output to file instead of stdout"
+    )
 
     # 2. Trigger subcommand (for other agents)
-    trig_parser = subparsers.add_parser("trigger", help="Trigger optimization programmatically via JEV event")
+    trig_parser = subparsers.add_parser(
+        "trigger", help="Trigger optimization programmatically via JEV event"
+    )
     trig_parser.add_argument("--payload", type=str, help="JSON / JEV event string")
-    trig_parser.add_argument("--stdin", action="store_true", help="Read JEV event from stdin")
-    trig_parser.add_argument("query", nargs="*", help="Direct query string if payload not specified")
+    trig_parser.add_argument(
+        "--stdin", action="store_true", help="Read JEV event from stdin"
+    )
+    trig_parser.add_argument(
+        "query", nargs="*", help="Direct query string if payload not specified"
+    )
 
     # 3. Listen daemon
-    listen_parser = subparsers.add_parser("listen", help="Run inbox listener daemon for agent triggers")
-    listen_parser.add_argument("--dir", type=str, help="Base directory containing .context_optimizer folder")
-    listen_parser.add_argument("--interval", type=int, default=3, help="Polling interval in seconds")
+    listen_parser = subparsers.add_parser(
+        "listen", help="Run inbox listener daemon for agent triggers"
+    )
+    listen_parser.add_argument(
+        "--dir", type=str, help="Base directory containing .context_optimizer folder"
+    )
+    listen_parser.add_argument(
+        "--interval", type=int, default=3, help="Polling interval in seconds"
+    )
 
     # 4. Config manager
-    cfg_parser = subparsers.add_parser("config", help="Manage isolated environment variables")
-    cfg_parser.add_argument("config_action", choices=["show", "set", "path"], nargs="?", default="show")
+    cfg_parser = subparsers.add_parser(
+        "config", help="Manage isolated environment variables"
+    )
+    cfg_parser.add_argument(
+        "config_action", choices=["show", "set", "path"], nargs="?", default="show"
+    )
     cfg_parser.add_argument("key_value", nargs="?", help="KEY=VALUE to set")
 
     # 5. MCP tool schema
@@ -294,7 +358,8 @@ def main():
         cmd_mcp(args)
     elif args.command == "mcp-server":
         from .mcp_server import main as run_mcp_server
-        run_mcp_server()
+
+        run_mcp_server(env_file=args.env_file)
 
 
 if __name__ == "__main__":

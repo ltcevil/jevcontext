@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "context-optimizer"
 DEFAULT_ENV_FILE = DEFAULT_CONFIG_DIR / "env"
 LOCAL_ENV_FILE = Path(".env.context_optimizer")
@@ -25,7 +24,9 @@ def resolve_adc_project() -> Optional[str]:
     candidate_paths: List[Path] = []
     if adc_env:
         candidate_paths.append(Path(os.path.expandvars(os.path.expanduser(adc_env))))
-    candidate_paths.append(Path.home() / ".config" / "gcloud" / "application_default_credentials.json")
+    candidate_paths.append(
+        Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    )
 
     for path in candidate_paths:
         if path.is_file():
@@ -40,6 +41,7 @@ def resolve_adc_project() -> Optional[str]:
 
     try:
         import google.auth
+
         creds, proj = google.auth.default()
         if hasattr(creds, "quota_project_id") and creds.quota_project_id:
             return str(creds.quota_project_id)
@@ -50,7 +52,9 @@ def resolve_adc_project() -> Optional[str]:
     except Exception:
         pass
 
-    gcloud_default = Path.home() / ".config" / "gcloud" / "configurations" / "config_default"
+    gcloud_default = (
+        Path.home() / ".config" / "gcloud" / "configurations" / "config_default"
+    )
     if gcloud_default.is_file():
         try:
             for line in gcloud_default.read_text(encoding="utf-8").splitlines():
@@ -69,11 +73,14 @@ def has_adc_credentials() -> bool:
     adc_env = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if adc_env and Path(os.path.expandvars(os.path.expanduser(adc_env))).is_file():
         return True
-    adc_default = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    adc_default = (
+        Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    )
     if adc_default.is_file():
         return True
     try:
         import google.auth
+
         creds, _ = google.auth.default()
         return creds is not None
     except Exception:
@@ -82,68 +89,90 @@ def has_adc_credentials() -> bool:
 
 class IsolatedConfig(BaseModel):
     """Isolated configuration container.
-    
+
     Fields are loaded strictly from the isolated env file or explicit CLI options,
     NEVER leaking into or falling back to global os.environ by default.
     """
+
     gemini_api_key: Optional[str] = Field(
-        default=None,
-        description="Gemini API Key for Google Antigravity SDK"
+        default=None, description="Gemini API Key for Google Antigravity SDK"
     )
     use_vertex: bool = Field(
         default=False,
-        description="Whether to use Google Cloud Vertex AI via Application Default Credentials (ADC)"
+        description="Whether to use Google Cloud Vertex AI via Application Default Credentials (ADC)",
     )
     gcp_project: Optional[str] = Field(
         default=None,
-        description="Google Cloud Project ID for Vertex AI (auto-detected via ADC if omitted)"
+        description="Google Cloud Project ID for Vertex AI (auto-detected via ADC if omitted)",
     )
     gcp_location: str = Field(
-        default="us-central1",
-        description="Google Cloud Location/Region for Vertex AI"
+        default="us-central1", description="Google Cloud Location/Region for Vertex AI"
     )
     google_application_credentials: Optional[str] = Field(
         default=None,
-        description="Explicit path to Google Application Default Credentials JSON"
+        description="Explicit path to Google Application Default Credentials JSON",
     )
     typesafe_api_key: Optional[str] = Field(
-        default=None,
-        description="TypeSafe API Key for Jev System One decision engine"
+        default=None, description="TypeSafe API Key for Jev System One decision engine"
     )
     typesafe_base_url: str = Field(
-        default="https://api.typesafe.ai",
-        description="TypeSafe API base URL"
+        default="https://api.typesafe.ai", description="TypeSafe API base URL"
     )
     typesafe_model: str = Field(
-        default="jev-latest",
-        description="TypeSafe model identifier"
+        default="jev-latest", description="TypeSafe model identifier"
     )
     gemini_model: Optional[str] = Field(
-        default=None,
-        description="Google Gemini model identifier (default to SDK default if unset)"
+        default="gemini-3.8-flash",
+        description="Google Gemini model identifier (default to gemini-3.8-flash)",
     )
     max_context_tokens: int = Field(
         default=8000,
-        description="Maximum tokens to allocate for generated context bundle"
+        description="Maximum tokens to allocate for generated context bundle",
     )
     relevance_threshold: float = Field(
         default=0.45,
-        description="Jev Noul minimum probability for a file to be considered relevant"
+        description="Jev Noul minimum probability for a file to be considered relevant",
     )
     isolate_env: bool = Field(
         default=True,
-        description="Whether to isolate environment variables from global os.environ"
+        description="Whether to isolate environment variables from global os.environ",
     )
     exclude_patterns: List[str] = Field(
         default_factory=lambda: [
-            ".git", ".venv", "venv", "node_modules", "__pycache__",
-            ".pytest_cache", ".mypy_cache", ".DS_Store", "*.pyc",
-            "*.lock", "package-lock.json", "dist", "build", "*.egg-info",
-            ".idea", ".vscode", "*.min.js", "*.min.css", "*.map",
-            "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.pdf",
-            "*.zip", "*.tar", "*.gz", "*.mp3", "*.mp4", "*.dylib", "*.so"
+            ".git",
+            ".venv",
+            "venv",
+            "node_modules",
+            "__pycache__",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".DS_Store",
+            "*.pyc",
+            "*.lock",
+            "package-lock.json",
+            "dist",
+            "build",
+            "*.egg-info",
+            ".idea",
+            ".vscode",
+            "*.min.js",
+            "*.min.css",
+            "*.map",
+            "*.png",
+            "*.jpg",
+            "*.jpeg",
+            "*.gif",
+            "*.ico",
+            "*.pdf",
+            "*.zip",
+            "*.tar",
+            "*.gz",
+            "*.mp3",
+            "*.mp4",
+            "*.dylib",
+            "*.so",
         ],
-        description="Default glob patterns to exclude during file crawling"
+        description="Default glob patterns to exclude during file crawling",
     )
 
     @classmethod
@@ -151,10 +180,10 @@ class IsolatedConfig(BaseModel):
         cls,
         env_file_path: Optional[str | Path] = None,
         allow_global_env: bool = False,
-        overrides: Optional[Dict[str, Any]] = None
+        overrides: Optional[Dict[str, Any]] = None,
     ) -> IsolatedConfig:
         """Load isolated configuration.
-        
+
         Priority:
         1. Explicit overrides passed as dict
         2. Specified env_file_path if provided
@@ -166,7 +195,11 @@ class IsolatedConfig(BaseModel):
 
         candidate_files: List[Path] = []
         if env_file_path:
-            candidate_files.append(Path(os.path.expandvars(os.path.expanduser(str(env_file_path)))).resolve())
+            candidate_files.append(
+                Path(
+                    os.path.expandvars(os.path.expanduser(str(env_file_path)))
+                ).resolve()
+            )
         else:
             candidate_files.append(LOCAL_ENV_FILE.resolve())
             candidate_files.append(OPTIMIZER_ENV_FILE.resolve())
@@ -187,44 +220,63 @@ class IsolatedConfig(BaseModel):
 
         # Map environment variable keys to model fields
         config_dict: Dict[str, Any] = {}
-        if "GEMINI_API_KEY" in env_vars:
-            config_dict["gemini_api_key"] = env_vars["GEMINI_API_KEY"]
-        elif "CONTEXT_OPTIMIZER_GEMINI_KEY" in env_vars:
-            config_dict["gemini_api_key"] = env_vars["CONTEXT_OPTIMIZER_GEMINI_KEY"]
+        raw_api_key = env_vars.get("GEMINI_API_KEY") or env_vars.get(
+            "CONTEXT_OPTIMIZER_GEMINI_KEY"
+        )
+        if raw_api_key:
+            clean_key = raw_api_key.strip()
+            if clean_key.lower() in ("null", "none", ""):
+                config_dict["gemini_api_key"] = None
+            else:
+                config_dict["gemini_api_key"] = clean_key
+        else:
+            config_dict["gemini_api_key"] = None
 
         if "GOOGLE_APPLICATION_CREDENTIALS" in env_vars:
-            cred_path = os.path.expandvars(os.path.expanduser(env_vars["GOOGLE_APPLICATION_CREDENTIALS"]))
-            config_dict["google_application_credentials"] = cred_path
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+            cred_val = env_vars["GOOGLE_APPLICATION_CREDENTIALS"].strip()
+            if cred_val and cred_val.lower() not in ("null", "none"):
+                cred_path = os.path.expandvars(os.path.expanduser(cred_val))
+                config_dict["google_application_credentials"] = cred_path
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
 
         if "CLOUDSDK_CONFIG" in env_vars:
-            sdk_path = os.path.expandvars(os.path.expanduser(env_vars["CLOUDSDK_CONFIG"]))
+            sdk_path = os.path.expandvars(
+                os.path.expanduser(env_vars["CLOUDSDK_CONFIG"])
+            )
             os.environ["CLOUDSDK_CONFIG"] = sdk_path
 
         use_vertex_env = (
-            env_vars.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes") or
-            env_vars.get("USE_VERTEX", "").lower() in ("true", "1", "yes") or
-            env_vars.get("CONTEXT_OPTIMIZER_USE_VERTEX", "").lower() in ("true", "1", "yes") or
-            env_vars.get("AGY_ADC_AUTH", "").lower() in ("true", "1", "yes")
+            env_vars.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower()
+            in ("true", "1", "yes")
+            or env_vars.get("USE_VERTEX", "").lower() in ("true", "1", "yes")
+            or env_vars.get("CONTEXT_OPTIMIZER_USE_VERTEX", "").lower()
+            in ("true", "1", "yes")
+            or env_vars.get("AGY_ADC_AUTH", "").lower() in ("true", "1", "yes")
         )
 
         project_val = (
-            env_vars.get("GOOGLE_CLOUD_PROJECT") or
-            env_vars.get("GCP_PROJECT") or
-            env_vars.get("PROJECT_ID") or
-            env_vars.get("CONTEXT_OPTIMIZER_GCP_PROJECT")
+            env_vars.get("GOOGLE_CLOUD_PROJECT")
+            or env_vars.get("GCP_PROJECT")
+            or env_vars.get("PROJECT_ID")
+            or env_vars.get("CONTEXT_OPTIMIZER_GCP_PROJECT")
         )
         if project_val:
-            config_dict["gcp_project"] = project_val
+            clean_proj = project_val.strip()
+            if clean_proj.lower() not in ("null", "none", ""):
+                config_dict["gcp_project"] = clean_proj
 
         location_val = (
-            env_vars.get("GOOGLE_CLOUD_LOCATION") or
-            env_vars.get("GCP_LOCATION") or
-            env_vars.get("CONTEXT_OPTIMIZER_GCP_LOCATION")
+            env_vars.get("GOOGLE_CLOUD_LOCATION")
+            or env_vars.get("GCP_LOCATION")
+            or env_vars.get("CONTEXT_OPTIMIZER_GCP_LOCATION")
         )
         if location_val:
             # Vertex AI regional publisher models require full region e.g. us-central1
-            config_dict["gcp_location"] = "us-central1" if location_val.strip().lower() == "us" else location_val.strip()
+            config_dict["gcp_location"] = (
+                "us-central1"
+                if location_val.strip().lower() == "us"
+                else location_val.strip()
+            )
 
         has_api_key = bool(config_dict.get("gemini_api_key"))
         adc_available = has_adc_credentials()
@@ -246,16 +298,19 @@ class IsolatedConfig(BaseModel):
 
         if "TYPESAFE_MODEL" in env_vars:
             model_val = env_vars["TYPESAFE_MODEL"].strip()
-            config_dict["typesafe_model"] = "jev-latest" if model_val in {"jev", ""} else model_val
+            config_dict["typesafe_model"] = (
+                "jev-latest" if model_val in {"jev", ""} else model_val
+            )
 
         model_name_env = env_vars.get("GEMINI_MODEL") or env_vars.get("OPTIMIZER_MODEL")
         if model_name_env:
             model_name_clean = model_name_env.strip()
-            # If on Vertex, gemini-3.8-flash does not exist; normalize to gemini-2.5-flash
-            if config_dict.get("use_vertex") and "gemini-3." in model_name_clean:
-                config_dict["gemini_model"] = "gemini-2.5-flash"
-            else:
+            if model_name_clean.lower() not in ("null", "none", ""):
                 config_dict["gemini_model"] = model_name_clean
+            else:
+                config_dict["gemini_model"] = "gemini-3.8-flash"
+        elif "gemini_model" not in config_dict:
+            config_dict["gemini_model"] = "gemini-3.8-flash"
 
         if "MAX_CONTEXT_TOKENS" in env_vars:
             try:
@@ -265,12 +320,16 @@ class IsolatedConfig(BaseModel):
 
         if "RELEVANCE_THRESHOLD" in env_vars:
             try:
-                config_dict["relevance_threshold"] = float(env_vars["RELEVANCE_THRESHOLD"])
+                config_dict["relevance_threshold"] = float(
+                    env_vars["RELEVANCE_THRESHOLD"]
+                )
             except ValueError:
                 pass
 
         if "EXCLUDE_PATTERNS" in env_vars:
-            patterns = [p.strip() for p in env_vars["EXCLUDE_PATTERNS"].split(",") if p.strip()]
+            patterns = [
+                p.strip() for p in env_vars["EXCLUDE_PATTERNS"].split(",") if p.strip()
+            ]
             if patterns:
                 config_dict["exclude_patterns"] = patterns
 
@@ -304,14 +363,16 @@ class IsolatedConfig(BaseModel):
         return result
 
     @classmethod
-    def save_variable(cls, key: str, value: str, target_path: Optional[Path] = None) -> Path:
+    def save_variable(
+        cls, key: str, value: str, target_path: Optional[Path] = None
+    ) -> Path:
         """Persist a configuration variable to the isolated env file."""
         path = target_path or DEFAULT_ENV_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         current = cls._parse_env_file(path) if path.is_file() else {}
         current[key] = value
 
-        lines = [f"# context-optimizer isolated environment configuration\n"]
+        lines = ["# context-optimizer isolated environment configuration\n"]
         for k, v in sorted(current.items()):
             lines.append(f"{k}={v}\n")
 
