@@ -20,6 +20,8 @@ from rich.table import Table
 from .config import IsolatedConfig, DEFAULT_ENV_FILE
 from .mcp_tool import MCP_TOOL_DEFINITION
 from .optimizer import ContextOptimizer
+from .scanner import DirectoryScanner
+from .agent import AntigravityAgentManager
 from .triggers import TriggerInboxWatcher, execute_trigger_request
 
 console = Console(stderr=True)  # Logs and status go to stderr
@@ -53,6 +55,14 @@ def cmd_optimize(args: argparse.Namespace):
         overrides["gcp_project"] = args.project
     if getattr(args, "location", None):
         overrides["gcp_location"] = args.location
+    if getattr(args, "model", None):
+        overrides["gemini_model"] = args.model
+    if getattr(args, "exclude_patterns", None):
+        patterns = [p.strip() for p in args.exclude_patterns.split(",") if p.strip()]
+        if patterns:
+            overrides["exclude_patterns"] = patterns
+    if getattr(args, "min_score", None) is not None:
+        overrides["relevance_threshold"] = args.min_score
 
     config = IsolatedConfig.load(
         env_file_path=args.env_file,
@@ -123,10 +133,13 @@ def cmd_optimize(args: argparse.Namespace):
         console.print(f"[green]Saved output to:[/] {out_path}")
     else:
         # Print raw content to stdout
-        sys.stdout.write(output_text)
-        if not output_text.endswith("\n"):
-            sys.stdout.write("\n")
-        sys.stdout.flush()
+        try:
+            sys.stdout.write(output_text)
+            if not output_text.endswith("\n"):
+                sys.stdout.write("\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            pass
 
 
 def cmd_trigger(args: argparse.Namespace):
@@ -151,6 +164,14 @@ def cmd_trigger(args: argparse.Namespace):
         overrides["gcp_project"] = args.project
     if getattr(args, "location", None):
         overrides["gcp_location"] = args.location
+    if getattr(args, "model", None):
+        overrides["gemini_model"] = args.model
+    if getattr(args, "exclude_patterns", None):
+        patterns = [p.strip() for p in args.exclude_patterns.split(",") if p.strip()]
+        if patterns:
+            overrides["exclude_patterns"] = patterns
+    if getattr(args, "min_score", None) is not None:
+        overrides["relevance_threshold"] = args.min_score
 
     config = IsolatedConfig.load(
         env_file_path=args.env_file,
@@ -244,6 +265,147 @@ def cmd_mcp(args: argparse.Namespace):
     print(json.dumps(MCP_TOOL_DEFINITION, indent=2))
 
 
+def cmd_scan(args: argparse.Namespace):
+    """Scan and audit repository files, symbols, token estimates, and exclusions."""
+    root_dir = Path(args.root or os.getcwd()).resolve()
+    overrides = {}
+    if getattr(args, "exclude_patterns", None):
+        patterns = [p.strip() for p in args.exclude_patterns.split(",") if p.strip()]
+        if patterns:
+            overrides["exclude_patterns"] = patterns
+
+    config = IsolatedConfig.load(
+        env_file_path=args.env_file,
+        allow_global_env=args.allow_global_env,
+        overrides=overrides or None,
+    )
+
+    scanner = DirectoryScanner(
+        root_dir=root_dir, exclude_patterns=config.exclude_patterns
+    )
+    scanned = scanner.scan(load_content=args.symbols)
+
+    if args.ext:
+        ext = args.ext.lower()
+        if not ext.startswith("."):
+            ext = f".{ext}"
+        scanned = [f for f in scanned if f.path.suffix.lower() == ext]
+
+    if getattr(args, "json", False):
+        data = {
+            "root_dir": str(root_dir),
+            "total_files": len(scanned),
+            "total_tokens": sum(f.estimated_tokens for f in scanned),
+            "total_lines": sum(f.line_count for f in scanned),
+            "files": [
+                {
+                    "path": f.relpath,
+                    "lines": f.line_count,
+                    "tokens": f.estimated_tokens,
+                    "language": f.language,
+                    "symbols": [s.name for s in f.symbols],
+                }
+                for f in scanned
+            ],
+        }
+        try:
+            sys.stdout.write(json.dumps(data, indent=2) + "\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            pass
+        return
+
+    table = Table(title=f"Codebase Scan: {root_dir}")
+    table.add_column("File", style="cyan", no_wrap=True)
+    table.add_column("Lang", style="magenta")
+    table.add_column("Lines", style="yellow", justify="right")
+    table.add_column("Est. Tokens", style="green", justify="right")
+    table.add_column("Symbols", style="blue", justify="right")
+
+    limit = args.limit or 50
+    for f in scanned[:limit]:
+        table.add_row(
+            f.relpath,
+            f.language,
+            str(f.line_count),
+            str(f.estimated_tokens),
+            str(len(f.symbols)),
+        )
+
+    console.print(table)
+    if len(scanned) > limit:
+        console.print(
+            f"[dim]... and {len(scanned) - limit} more files (use --limit to show more)[/dim]"
+        )
+
+    total_tokens = sum(f.estimated_tokens for f in scanned)
+    total_lines = sum(f.line_count for f in scanned)
+    console.print(
+        f"[bold green]Summary:[/] {len(scanned)} files | {total_lines} lines | ~{total_tokens} estimated tokens"
+    )
+
+
+def cmd_agent(args: argparse.Namespace):
+    """Run an Antigravity AI Agent with distilled codebase context."""
+    prompt = " ".join(args.prompt) if isinstance(args.prompt, list) else args.prompt
+    if not prompt.strip():
+        console.print("[bold red]Error:[/] Agent prompt cannot be empty.")
+        sys.exit(1)
+
+    root_dir = Path(args.root or os.getcwd()).resolve()
+    overrides = {}
+    if getattr(args, "vertex", False):
+        overrides["use_vertex"] = True
+    if getattr(args, "project", None):
+        overrides["gcp_project"] = args.project
+    if getattr(args, "location", None):
+        overrides["gcp_location"] = args.location
+    if getattr(args, "model", None):
+        overrides["gemini_model"] = args.model
+    if getattr(args, "exclude_patterns", None):
+        patterns = [p.strip() for p in args.exclude_patterns.split(",") if p.strip()]
+        if patterns:
+            overrides["exclude_patterns"] = patterns
+
+    config = IsolatedConfig.load(
+        env_file_path=args.env_file,
+        allow_global_env=args.allow_global_env,
+        overrides=overrides or None,
+    )
+
+    console.print("[bold cyan]🤖 Distilling context for agent...[/]")
+    optimizer = ContextOptimizer(config=config, root_dir=root_dir)
+    res = optimizer.optimize(query=prompt, token_budget=args.budget or 4000)
+
+    context_prompt = f"{res.context_markdown}\n\n---\nUSER TASK:\n{prompt}"
+
+    agent_mgr = AntigravityAgentManager(config=config, workspace_dir=root_dir)
+    console.print(f"[bold green]🚀 Agent ({config.gemini_model}) executing...[/]\n")
+
+    def on_token(token: str):
+        sys.stdout.write(token)
+        sys.stdout.flush()
+
+    def on_thought(thought: str):
+        if getattr(args, "thoughts", False):
+            console.print(f"[dim italic]💭 {thought}[/dim italic]")
+
+    import asyncio
+
+    try:
+        asyncio.run(
+            agent_mgr.chat_stream(
+                context_prompt,
+                on_token=on_token,
+                on_thought=on_thought,
+            )
+        )
+        sys.stdout.write("\n")
+    except Exception as e:
+        console.print(f"\n[bold red]Agent error:[/] {e}")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="context-optimizer",
@@ -273,6 +435,16 @@ def main():
         help="Google Cloud region/location for Vertex AI (default: us-central1)",
     )
     parser.add_argument(
+        "--model",
+        type=str,
+        help="Override Google Gemini model identifier (e.g. gemini-3.8-flash)",
+    )
+    parser.add_argument(
+        "--exclude-patterns",
+        type=str,
+        help="Override comma-separated exclude glob patterns",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose debug logging"
     )
 
@@ -295,6 +467,15 @@ def main():
         choices=["markdown", "json", "jev"],
         default="markdown",
         help="Output format",
+    )
+    opt_parser.add_argument(
+        "--model", type=str, help="Override Gemini model identifier"
+    )
+    opt_parser.add_argument(
+        "--exclude-patterns", type=str, help="Comma-separated exclude glob patterns"
+    )
+    opt_parser.add_argument(
+        "--min-score", type=float, help="Minimum relevance threshold (0.0 to 1.0)"
     )
     opt_parser.add_argument(
         "-o", "--output", type=str, help="Write output to file instead of stdout"
@@ -338,6 +519,46 @@ def main():
     # 6. MCP stdio server
     subparsers.add_parser("mcp-server", help="Run MCP server over stdio transport")
 
+    # 7. Scan codebase files & AST symbols
+    scan_parser = subparsers.add_parser(
+        "scan",
+        help="Scan and audit repository files, symbols, token counts, and exclusions",
+    )
+    scan_parser.add_argument("--root", type=str, help="Root directory (default: cwd)")
+    scan_parser.add_argument(
+        "--symbols", action="store_true", help="Extract and display AST symbols"
+    )
+    scan_parser.add_argument(
+        "--ext", type=str, help="Filter by file extension (e.g. .py, .ts)"
+    )
+    scan_parser.add_argument(
+        "--limit", type=int, default=50, help="Max files to display in table"
+    )
+    scan_parser.add_argument(
+        "--exclude-patterns", type=str, help="Comma-separated exclude glob patterns"
+    )
+    scan_parser.add_argument(
+        "--json", action="store_true", help="Output raw JSON scan summary"
+    )
+
+    # 8. Antigravity AI Agent integration
+    agent_parser = subparsers.add_parser(
+        "agent", help="Run Antigravity AI Agent with distilled codebase context"
+    )
+    agent_parser.add_argument(
+        "prompt", nargs="+", help="Task instruction or prompt for the AI agent"
+    )
+    agent_parser.add_argument("--root", type=str, help="Root directory (default: cwd)")
+    agent_parser.add_argument(
+        "--budget", type=int, help="Token budget for context distillation"
+    )
+    agent_parser.add_argument(
+        "--model", type=str, help="Override Gemini model identifier"
+    )
+    agent_parser.add_argument(
+        "--thoughts", action="store_true", help="Display internal reasoning stream"
+    )
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -360,6 +581,10 @@ def main():
         from .mcp_server import main as run_mcp_server
 
         run_mcp_server(env_file=args.env_file)
+    elif args.command == "scan":
+        cmd_scan(args)
+    elif args.command == "agent":
+        cmd_agent(args)
 
 
 if __name__ == "__main__":
